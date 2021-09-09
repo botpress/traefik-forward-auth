@@ -18,6 +18,10 @@ func main() {
 	// Perform config validation
 	config.Validate()
 
+	// Build managment server
+	managmentServer := internal.NewManagmentServer(config)
+	go managmentServer.Serve()
+
 	// Build server
 	server := internal.NewServer()
 

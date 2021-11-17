@@ -10,7 +10,7 @@ jobs:
           repository: botpress/actions
           token: ${{ secrets.BOTPRESSOPS_PAT }}
           path: "@actions"
-      - uses: "./@actions/docker"
+      - uses: "./@actions/build/docker"
         with:
           repository: traefik-forward-auth
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}

@@ -1,5 +1,11 @@
 name: Docker
-on: [push]
+on:
+  push:
+    branches:
+      - 'master'
+    tags:
+      - v*
+  workflow_dispatch: {}
 
 permissions:
   id-token: write

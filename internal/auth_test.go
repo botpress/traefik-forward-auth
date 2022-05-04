@@ -246,6 +246,25 @@ func TestRedirectUri(t *testing.T) {
 	assert.Equal("auth.example.com", uri.Host)
 	assert.Equal("/_oauth", uri.Path)
 
+	config.AuthHosts = []DomainInfo{
+		{
+			Domain:     "auth.example.test",
+			RootDomain: "example.test",
+		},
+		{
+			Domain:     "auth.example.foo",
+			RootDomain: "example.foo",
+		},
+	}
+	config.CookieDomains = []CookieDomain{*NewCookieDomain("example.foo")}
+
+	// Check url
+	uri, err = url.Parse(redirectUri(r))
+	assert.Nil(err)
+	assert.Equal("http", uri.Scheme)
+	assert.Equal("auth.example.foo", uri.Host)
+	assert.Equal("/_oauth", uri.Path)
+
 	//
 	// With Auth URL + cookie domain, but from different domain
 	// - will not use auth host

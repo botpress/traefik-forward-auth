@@ -438,7 +438,7 @@ type DomainInfo struct {
 
 // UnmarshalFlag converts a string to a DomainInfo
 func (c *DomainInfo) UnmarshalFlag(value string) error {
-	*c = *&DomainInfo{
+	*c = DomainInfo{
 		Domain:     value,
 		RootDomain: getRootDomain(value),
 	}

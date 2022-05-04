@@ -252,17 +252,17 @@ func TestRedirectUri(t *testing.T) {
 			RootDomain: "example.test",
 		},
 		{
-			Domain:     "auth.example.foo",
-			RootDomain: "example.foo",
+			Domain:     "auth.example.com",
+			RootDomain: "example.com",
 		},
 	}
-	config.CookieDomains = []CookieDomain{*NewCookieDomain("example.foo")}
+	config.CookieDomains = []CookieDomain{*NewCookieDomain("example.com")}
 
 	// Check url
 	uri, err = url.Parse(redirectUri(r))
 	assert.Nil(err)
 	assert.Equal("http", uri.Scheme)
-	assert.Equal("auth.example.foo", uri.Host)
+	assert.Equal("auth.example.com", uri.Host)
 	assert.Equal("/_oauth", uri.Path)
 
 	//

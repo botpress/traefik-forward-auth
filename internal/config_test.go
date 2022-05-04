@@ -46,6 +46,26 @@ func TestConfigDefaults(t *testing.T) {
 	assert.Equal("select_account", c.Providers.Google.Prompt)
 }
 
+func TestConfigAuthHosts(t *testing.T) {
+	assert := assert.New(t)
+	c, err := NewConfig([]string{"--auth-host=auth.example.foo", "--auth-host=auth.sub.example.test", "--auth-host=test.com"})
+	assert.Nil(err)
+	assert.Equal([]DomainInfo{
+		{
+			Domain:     "auth.example.foo",
+			RootDomain: "example.foo",
+		},
+		{
+			Domain:     "auth.sub.example.test",
+			RootDomain: "example.test",
+		},
+		{
+			Domain:     "test.com",
+			RootDomain: "test.com",
+		},
+	}, c.AuthHosts)
+}
+
 func TestConfigParseArgs(t *testing.T) {
 	assert := assert.New(t)
 	c, err := NewConfig([]string{

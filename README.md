@@ -10,7 +10,7 @@ A minimal forward authentication service that provides OAuth/SSO login and authe
 - Supports multiple providers including Google and OpenID Connect (supported by Azure, Github, Salesforce etc.)
 - Supports multiple domains/subdomains by dynamically generating redirect_uri's
 - Allows authentication to be selectively applied/bypassed based on request parameters (see `rules` in [Configuration](#configuration))
-- Supports use of centralised authentication host/redirect_uri (see `auth-host` in [Configuration](#configuration))
+- Supports use of centralised authentication host/redirect_uri (see `auth-hosts` in [Configuration](#configuration))
 - Allows authentication to persist across multiple domains (see [Cookie Domains](#cookie-domains))
 - Supports extended authentication beyond Google token lifetime (see: `lifetime` in [Configuration](#configuration))
 
@@ -150,7 +150,7 @@ Usage:
 Application Options:
   --log-level=[trace|debug|info|warn|error|fatal|panic] Log level (default: warn) [$LOG_LEVEL]
   --log-format=[text|json|pretty]                       Log format (default: text) [$LOG_FORMAT]
-  --auth-host=                                          Single host to use when returning from 3rd party auth [$AUTH_HOST]
+  --auth-host=                                          Hosts to use when returning from 3rd party auth [$AUTH_HOST]
   --config=                                             Path to config file [$CONFIG]
   --cookie-domain=                                      Domain to set auth cookie on, can be set multiple times [$COOKIE_DOMAIN]
   --insecure-cookie                                     Use insecure cookies [$INSECURE_COOKIE]
@@ -206,7 +206,7 @@ All options can be supplied in any of the following ways, in the following prece
 
 - `auth-host`
 
-  When set, when a user returns from authentication with a 3rd party provider they will always be forwarded to this host. By using one central host, this means you only need to add this `auth-host` as a valid redirect uri to your 3rd party provider.
+  When set, when a user returns from authentication with a 3rd party provider they will always be forwarded to the matching auth-host (Match based on `rootDomain`). By using one central host, this means you only need to add an `auth-host` as a valid redirect uri to your 3rd party provider.
 
   The host should be specified without protocol or path, for example:
 
@@ -497,6 +497,13 @@ Two criteria must be met for an `auth-host` to be used:
 2. `auth-host` is also subdomain of same `cookie-domain`
 
 Please note: For Auth Host mode to work, you must ensure that requests to your auth-host are routed to the traefik-forward-auth container, as demonstrated with the service labels in the [docker-compose-auth.yml](https://github.com/thomseddon/traefik-forward-auth/blob/master/examples/traefik-v2/swarm/docker-compose-auth-host.yml) example and the [ingressroute resource](https://github.com/thomseddon/traefik-forward-auth/blob/master/examples/traefik-v2/kubernetes/advanced-separate-pod/traefik-forward-auth/ingress.yaml) in a kubernetes example.
+
+Multiple auth host can be added to match different domains. The following example will match all the domains `example.com` to `auth.example.com` and `example.test` to `auth.example.test`:
+
+```
+--auth-host="auth.example.com"
+--auth-host="auth.example.test"
+```
 
 ### Logging Out
 

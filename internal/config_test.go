@@ -231,6 +231,7 @@ func TestConfigParseEnvironment(t *testing.T) {
 	os.Setenv("COOKIE_DOMAIN", "test1.com,example.org")
 	os.Setenv("DOMAIN", "test2.com,example.org")
 	os.Setenv("WHITELIST", "test3.com,example.org")
+	os.Setenv("AUTH_HOSTS", "auth.example.foo,auth.sub.example.test,test.com")
 
 	c, err := NewConfig([]string{})
 	assert.Nil(err)
@@ -243,6 +244,20 @@ func TestConfigParseEnvironment(t *testing.T) {
 	}, c.CookieDomains, "array variable should be read from environment COOKIE_DOMAIN")
 	assert.Equal(CommaSeparatedList{"test2.com", "example.org"}, c.Domains, "array variable should be read from environment DOMAIN")
 	assert.Equal(CommaSeparatedList{"test3.com", "example.org"}, c.Whitelist, "array variable should be read from environment WHITELIST")
+	assert.Equal([]DomainInfo{
+		{
+			Domain:     "auth.example.foo",
+			RootDomain: "example.foo",
+		},
+		{
+			Domain:     "auth.sub.example.test",
+			RootDomain: "example.test",
+		},
+		{
+			Domain:     "test.com",
+			RootDomain: "test.com",
+		},
+	}, c.AuthHosts)
 
 	os.Unsetenv("COOKIE_NAME")
 	os.Unsetenv("PROVIDERS_GOOGLE_CLIENT_ID")

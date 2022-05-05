@@ -24,7 +24,11 @@ func TestConfigDefaults(t *testing.T) {
 	assert.Equal("warn", c.LogLevel)
 	assert.Equal("text", c.LogFormat)
 
-	assert.Equal("", c.AuthHost)
+	for range c.AuthHosts {
+		assert.FailNow("should never be called")
+	}
+
+	assert.Equal([]DomainInfo(nil), c.AuthHosts)
 	assert.Len(c.CookieDomains, 0)
 	assert.False(c.InsecureCookie)
 	assert.Equal("_forward_auth", c.CookieName)
@@ -40,6 +44,26 @@ func TestConfigDefaults(t *testing.T) {
 	assert.Equal(c.Port, 4181)
 
 	assert.Equal("select_account", c.Providers.Google.Prompt)
+}
+
+func TestConfigAuthHosts(t *testing.T) {
+	assert := assert.New(t)
+	c, err := NewConfig([]string{"--auth-host=auth.example.foo", "--auth-host=auth.sub.example.test", "--auth-host=test.com"})
+	assert.Nil(err)
+	assert.Equal([]DomainInfo{
+		{
+			Domain:     "auth.example.foo",
+			RootDomain: "example.foo",
+		},
+		{
+			Domain:     "auth.sub.example.test",
+			RootDomain: "example.test",
+		},
+		{
+			Domain:     "test.com",
+			RootDomain: "test.com",
+		},
+	}, c.AuthHosts)
 }
 
 func TestConfigParseArgs(t *testing.T) {
@@ -197,7 +221,7 @@ func TestConfigFileBackwardsCompatability(t *testing.T) {
 	require.Nil(t, err)
 
 	assert.Equal("/two", c.Path, "variable in legacy config file should be read")
-	assert.Equal("auth.legacy.com", c.AuthHost, "variable in legacy config file should be read")
+	assert.Equal([]DomainInfo{{Domain: "auth.legacy.com", RootDomain: "legacy.com"}}, c.AuthHosts, "variable in legacy config file should be read")
 }
 
 func TestConfigParseEnvironment(t *testing.T) {
@@ -207,6 +231,7 @@ func TestConfigParseEnvironment(t *testing.T) {
 	os.Setenv("COOKIE_DOMAIN", "test1.com,example.org")
 	os.Setenv("DOMAIN", "test2.com,example.org")
 	os.Setenv("WHITELIST", "test3.com,example.org")
+	os.Setenv("AUTH_HOSTS", "auth.example.foo,auth.sub.example.test,test.com")
 
 	c, err := NewConfig([]string{})
 	assert.Nil(err)
@@ -219,6 +244,20 @@ func TestConfigParseEnvironment(t *testing.T) {
 	}, c.CookieDomains, "array variable should be read from environment COOKIE_DOMAIN")
 	assert.Equal(CommaSeparatedList{"test2.com", "example.org"}, c.Domains, "array variable should be read from environment DOMAIN")
 	assert.Equal(CommaSeparatedList{"test3.com", "example.org"}, c.Whitelist, "array variable should be read from environment WHITELIST")
+	assert.Equal([]DomainInfo{
+		{
+			Domain:     "auth.example.foo",
+			RootDomain: "example.foo",
+		},
+		{
+			Domain:     "auth.sub.example.test",
+			RootDomain: "example.test",
+		},
+		{
+			Domain:     "test.com",
+			RootDomain: "test.com",
+		},
+	}, c.AuthHosts)
 
 	os.Unsetenv("COOKIE_NAME")
 	os.Unsetenv("PROVIDERS_GOOGLE_CLIENT_ID")

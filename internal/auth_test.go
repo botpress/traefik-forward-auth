@@ -215,7 +215,12 @@ func TestRedirectUri(t *testing.T) {
 	// With Auth URL but no matching cookie domain
 	// - will not use auth host
 	//
-	config.AuthHost = "auth.example.com"
+	config.AuthHosts = []DomainInfo{
+		{
+			Domain:     "auth.example.com",
+			RootDomain: "example.com",
+		},
+	}
 
 	uri, err = url.Parse(redirectUri(r))
 	assert.Nil(err)
@@ -226,7 +231,31 @@ func TestRedirectUri(t *testing.T) {
 	//
 	// With correct Auth URL + cookie domain
 	//
-	config.AuthHost = "auth.example.com"
+	config.AuthHosts = []DomainInfo{
+		{
+			Domain:     "auth.example.com",
+			RootDomain: "example.com",
+		},
+	}
+	config.CookieDomains = []CookieDomain{*NewCookieDomain("example.com")}
+
+	// Check url
+	uri, err = url.Parse(redirectUri(r))
+	assert.Nil(err)
+	assert.Equal("http", uri.Scheme)
+	assert.Equal("auth.example.com", uri.Host)
+	assert.Equal("/_oauth", uri.Path)
+
+	config.AuthHosts = []DomainInfo{
+		{
+			Domain:     "auth.example.test",
+			RootDomain: "example.test",
+		},
+		{
+			Domain:     "auth.example.com",
+			RootDomain: "example.com",
+		},
+	}
 	config.CookieDomains = []CookieDomain{*NewCookieDomain("example.com")}
 
 	// Check url
@@ -243,7 +272,12 @@ func TestRedirectUri(t *testing.T) {
 	r = httptest.NewRequest("GET", "https://another.com/hello", nil)
 	r.Header.Add("X-Forwarded-Proto", "https")
 
-	config.AuthHost = "auth.example.com"
+	config.AuthHosts = []DomainInfo{
+		{
+			Domain:     "auth.example.com",
+			RootDomain: "example.com",
+		},
+	}
 	config.CookieDomains = []CookieDomain{*NewCookieDomain("example.com")}
 
 	// Check url
@@ -298,7 +332,12 @@ func TestAuthMakeCSRFCookie(t *testing.T) {
 	assert.Equal("app.example.com", c.Domain)
 
 	// With cookie domain and auth url
-	config.AuthHost = "auth.example.com"
+	config.AuthHosts = []DomainInfo{
+		{
+			Domain:     "auth.example.com",
+			RootDomain: "example.com",
+		},
+	}
 	config.CookieDomains = []CookieDomain{*NewCookieDomain("example.com")}
 	c = MakeCSRFCookie(r, "12333378901234567890123456789012")
 	assert.Equal("_forward_auth_csrf_123333", c.Name)

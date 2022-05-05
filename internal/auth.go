@@ -144,27 +144,56 @@ func returnUrl(r *http.Request) string {
 
 // Get oauth redirect uri
 func redirectUri(r *http.Request) string {
-	if use, _ := useAuthDomain(r); use {
-		return fmt.Sprintf("%s://%s%s", getForwardedProto(r), config.AuthHost, config.Path)
+	if use, _, authHost := useAuthDomain(r); use {
+		return fmt.Sprintf("%s://%s%s", getForwardedProto(r), authHost, config.Path)
 	}
 
 	return fmt.Sprintf("%s%s", redirectBase(r), config.Path)
 }
 
 // Should we use auth host + what it is
-func useAuthDomain(r *http.Request) (bool, string) {
-	if config.AuthHost == "" {
-		return false, ""
+func useAuthDomain(r *http.Request) (bool, string, string) {
+	// Find the authHost that match the request host
+	authHostMatch, ok := getAuthDomain(r.Host)
+
+	if !ok {
+		return false, "", ""
 	}
 
 	// Does the request match a given cookie domain?
 	reqMatch, reqHost := matchCookieDomains(r.Host)
 
 	// Do any of the auth hosts match a cookie domain?
-	authMatch, authHost := matchCookieDomains(config.AuthHost)
+	authMatch, authHost := matchCookieDomains(authHostMatch)
 
 	// We need both to match the same domain
-	return reqMatch && authMatch && reqHost == authHost, reqHost
+	return reqMatch && authMatch && reqHost == authHost, reqHost, authHostMatch
+}
+
+func getAuthDomain(domain string) (string, bool) {
+	rootDomain := getRootDomain(domain)
+
+	for _, authHost := range config.AuthHosts {
+		if authHost.RootDomain == rootDomain {
+			return authHost.Domain, true
+		}
+	}
+
+	return "", false
+}
+
+func getRootDomain(domain string) string {
+	hostParts := strings.Split(domain, ".")
+
+	if len(hostParts) == 0 {
+		return ""
+	}
+
+	if len(hostParts) == 1 {
+		return hostParts[0]
+	}
+
+	return fmt.Sprintf("%s.%s", hostParts[len(hostParts)-2], hostParts[len(hostParts)-1])
 }
 
 // Cookie methods
@@ -295,7 +324,7 @@ func cookieDomain(r *http.Request) string {
 // Cookie domain
 func csrfCookieDomain(r *http.Request) string {
 	var host string
-	if use, domain := useAuthDomain(r); use {
+	if use, domain, _ := useAuthDomain(r); use {
 		host = domain
 	} else {
 		host = r.Host
@@ -400,4 +429,23 @@ func (c *CookieDomains) MarshalFlag() (string, error) {
 		domains = append(domains, d.Domain)
 	}
 	return strings.Join(domains, ","), nil
+}
+
+type DomainInfo struct {
+	Domain     string
+	RootDomain string
+}
+
+// UnmarshalFlag converts a string to a DomainInfo
+func (c *DomainInfo) UnmarshalFlag(value string) error {
+	*c = DomainInfo{
+		Domain:     value,
+		RootDomain: getRootDomain(value),
+	}
+	return nil
+}
+
+// MarshalFlag converts a DomainInfo to a string
+func (c *DomainInfo) MarshalFlag() (string, error) {
+	return c.Domain, nil
 }

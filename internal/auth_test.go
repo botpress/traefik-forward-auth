@@ -433,6 +433,50 @@ func TestMakeState(t *testing.T) {
 	assert.Equal("nonce:generic-oauth:http://example.com/hello", state)
 }
 
+// The return url has to carry the query string, or every protected endpoint that
+// takes parameters breaks for users arriving without a valid auth cookie: the
+// browser is sent to the provider and comes back on the bare path. An OAuth
+// /authorize endpoint behind this middleware is the case that makes it obvious,
+// since it fails on a missing client_id before the downstream app sees anything.
+func TestMakeStateKeepsQueryString(t *testing.T) {
+	assert := assert.New(t)
+
+	// Shaped like a real OAuth authorization request: one of the parameters is
+	// itself a URL, so the return url holds colons, slashes and ampersands that
+	// all have to survive being packed into the state and taken back out.
+	uri := "/authorize?response_type=code&client_id=abc123&redirect_uri=https://claude.ai/api/mcp/auth_callback&code_challenge=E9Melhoa2Owv&code_challenge_method=S256"
+	r := httptest.NewRequest("GET", "http://example.com"+uri, nil)
+	r.Header.Add("X-Forwarded-Proto", "http")
+
+	nonce := "12345678901234567890123456789012"
+	want := "http://example.com" + uri
+
+	p := provider.Google{}
+	state := MakeState(r, &p, nonce)
+	assert.Equal(nonce+":google:"+want, state)
+
+	// ValidateCSRFCookie splits the provider off at the first colon and returns
+	// the whole remainder, so the colons inside the query must come back intact.
+	config, _ = NewConfig([]string{})
+	c := &http.Cookie{Value: nonce}
+	valid, providerName, redirect, err := ValidateCSRFCookie(c, state)
+	assert.True(valid)
+	assert.Nil(err)
+	assert.Equal("google", providerName)
+	assert.Equal(want, redirect)
+}
+
+// A request with no query must not grow a trailing "?".
+func TestMakeStateWithoutQueryString(t *testing.T) {
+	assert := assert.New(t)
+
+	r := httptest.NewRequest("GET", "http://example.com/hello", nil)
+	r.Header.Add("X-Forwarded-Proto", "http")
+
+	p := provider.Google{}
+	assert.Equal("nonce:google:http://example.com/hello", MakeState(r, &p, "nonce"))
+}
+
 func TestAuthNonce(t *testing.T) {
 	assert := assert.New(t)
 	err, nonce1 := Nonce()

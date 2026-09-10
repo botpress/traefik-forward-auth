@@ -139,7 +139,17 @@ func redirectBase(r *http.Request) string {
 
 // Return url
 func returnUrl(r *http.Request) string {
-	return fmt.Sprintf("%s%s", redirectBase(r), r.URL.Path)
+	// The query has to survive the provider round trip. This url is packed into the
+	// OAuth state and is where the browser lands after login, so dropping the query
+	// returns the user to a bare path with their parameters gone. It only affects
+	// users arriving without a valid auth cookie, which is what makes the symptom
+	// look intermittent and per-user.
+	u := fmt.Sprintf("%s%s", redirectBase(r), r.URL.Path)
+	if r.URL.RawQuery == "" {
+		return u
+	}
+
+	return fmt.Sprintf("%s?%s", u, r.URL.RawQuery)
 }
 
 // Get oauth redirect uri

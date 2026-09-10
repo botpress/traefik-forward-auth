@@ -296,13 +296,43 @@ func ValidateCSRFCookie(c *http.Cookie, state string) (valid bool, provider stri
 		return false, "", "", errors.New("Invalid CSRF state format")
 	}
 
+	redirect, err = decodeReturnUrl(params[split+1:])
+	if err != nil {
+		return false, "", "", err
+	}
+
 	// Valid, return provider and redirect
-	return true, params[:split], params[split+1:], nil
+	return true, params[:split], redirect, nil
 }
 
 // MakeState generates a state value
 func MakeState(r *http.Request, p provider.Provider, nonce string) string {
-	return fmt.Sprintf("%s:%s:%s", nonce, p.Name(), returnUrl(r))
+	// The return url is encoded rather than written in the clear because it round trips through the
+	// identity provider and back through our own edge, where anything readable is something an
+	// intermediary can form an opinion about. The WAF in front of the idp rejects a loopback
+	// redirect_uri, which is precisely what a native MCP client's OAuth callback looks like, so a
+	// cleartext url here makes those clients unable to log in at all. Encoding also stops the nested
+	// query from being re-parsed or re-encoded on the way round.
+	encoded := base64.RawURLEncoding.EncodeToString([]byte(returnUrl(r)))
+
+	return fmt.Sprintf("%s:%s:%s", nonce, p.Name(), encoded)
+}
+
+// decodeReturnUrl reverses MakeState's encoding, tolerating the cleartext urls written by the
+// previous release so logins already in flight when this deploys still land. A real return url
+// contains "://", and neither character is in the base64url alphabet, so an encoded value can never
+// be mistaken for a cleartext one or the reverse. Drop the fallback a release after rollout.
+func decodeReturnUrl(value string) (string, error) {
+	if strings.Contains(value, "://") {
+		return value, nil
+	}
+
+	decoded, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return "", errors.New("Invalid CSRF state redirect")
+	}
+
+	return string(decoded), nil
 }
 
 // ValidateState checks whether the state is of right length.

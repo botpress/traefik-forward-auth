@@ -1,6 +1,7 @@
 package tfa
 
 import (
+	"encoding/base64"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -86,7 +87,14 @@ func TestServerAuthHandlerInvalid(t *testing.T) {
 	parts := strings.SplitN(state[0], ":", 3)
 	require.Len(t, parts, 3)
 	assert.Equal("google", parts[1])
-	assert.Equal("http://example.com/foo", parts[2])
+
+	// The return url is opaque in the state — see MakeState. This is the assertion that matters at
+	// the server level: what leaves for the provider carries no readable url for an intermediary to
+	// act on, and still decodes back to exactly where the user was going.
+	assert.NotContains(state[0], "://")
+	decoded, err := base64.RawURLEncoding.DecodeString(parts[2])
+	require.NoError(t, err)
+	assert.Equal("http://example.com/foo", string(decoded))
 
 	// Should warn as using http without insecure cookie
 	logs := hook.AllEntries()

@@ -1,6 +1,7 @@
 package tfa
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -387,13 +388,64 @@ func TestAuthValidateCSRFCookie(t *testing.T) {
 	}
 
 	// Should allow valid state
-	state = "12345678901234567890123456789012:p99:url123"
+	state = "12345678901234567890123456789012:p99:" + base64.RawURLEncoding.EncodeToString([]byte("url123"))
 	c.Value = "12345678901234567890123456789012"
 	valid, provider, redirect, err := ValidateCSRFCookie(c, state)
 	assert.True(valid, "valid request should return valid")
 	assert.Nil(err, "valid request should not return an error")
 	assert.Equal("p99", provider, "valid request should return correct provider")
 	assert.Equal("url123", redirect, "valid request should return correct redirect")
+}
+
+// The return url round-trips through Google and back through our own edge, so it must not be
+// readable in the query string. A cleartext url there lets any intermediary form an opinion about
+// it: the AWS WAF in front of the idp rejects a loopback redirect_uri outright, which breaks every
+// native MCP client (Claude Code, Codex) whose OAuth callback is http://127.0.0.1:<port>.
+func TestMakeStateDoesNotExposeReturnUrl(t *testing.T) {
+	assert := assert.New(t)
+
+	uri := "/authorize?response_type=code&client_id=abc123&redirect_uri=http://127.0.0.1:53682/cb"
+	r := httptest.NewRequest("GET", "http://example.com"+uri, nil)
+	r.Header.Add("X-Forwarded-Proto", "http")
+
+	p := provider.Google{}
+	state := MakeState(r, &p, "12345678901234567890123456789012")
+
+	assert.NotContains(state, "://")
+	assert.NotContains(state, "127.0.0.1")
+	assert.NotContains(state, "redirect_uri")
+}
+
+// Logins already in flight when this deploys carry a cleartext tail. A real return url always
+// contains "://", whose characters are outside the base64url alphabet, so it can never be mistaken
+// for an encoded one — that is what makes the fallback safe rather than merely convenient.
+func TestValidateCSRFCookieAcceptsCleartextRedirect(t *testing.T) {
+	assert := assert.New(t)
+	config, _ = NewConfig([]string{})
+
+	nonce := "12345678901234567890123456789012"
+	want := "http://example.com/authorize?response_type=code&client_id=abc123"
+	c := &http.Cookie{Value: nonce}
+
+	valid, providerName, redirect, err := ValidateCSRFCookie(c, nonce+":google:"+want)
+	assert.True(valid)
+	assert.Nil(err)
+	assert.Equal("google", providerName)
+	assert.Equal(want, redirect, "a cleartext url must survive untouched, not be decoded as base64")
+}
+
+// A tail that is neither valid base64 nor a url is a malformed state, and must fail closed rather
+// than redirect the browser somewhere unintended.
+func TestValidateCSRFCookieRejectsUndecodableRedirect(t *testing.T) {
+	assert := assert.New(t)
+	config, _ = NewConfig([]string{})
+
+	nonce := "12345678901234567890123456789012"
+	c := &http.Cookie{Value: nonce}
+
+	valid, _, _, err := ValidateCSRFCookie(c, nonce+":google:not!valid!base64")
+	assert.False(valid)
+	assert.Error(err)
 }
 
 func TestValidateState(t *testing.T) {
@@ -417,20 +469,22 @@ func TestMakeState(t *testing.T) {
 	r := httptest.NewRequest("GET", "http://example.com/hello", nil)
 	r.Header.Add("X-Forwarded-Proto", "http")
 
+	encoded := base64.RawURLEncoding.EncodeToString([]byte("http://example.com/hello"))
+
 	// Test with google
 	p := provider.Google{}
 	state := MakeState(r, &p, "nonce")
-	assert.Equal("nonce:google:http://example.com/hello", state)
+	assert.Equal("nonce:google:"+encoded, state)
 
 	// Test with OIDC
 	p2 := provider.OIDC{}
 	state = MakeState(r, &p2, "nonce")
-	assert.Equal("nonce:oidc:http://example.com/hello", state)
+	assert.Equal("nonce:oidc:"+encoded, state)
 
 	// Test with Generic OAuth
 	p3 := provider.GenericOAuth{}
 	state = MakeState(r, &p3, "nonce")
-	assert.Equal("nonce:generic-oauth:http://example.com/hello", state)
+	assert.Equal("nonce:generic-oauth:"+encoded, state)
 }
 
 // The return url has to carry the query string, or every protected endpoint that
@@ -453,10 +507,10 @@ func TestMakeStateKeepsQueryString(t *testing.T) {
 
 	p := provider.Google{}
 	state := MakeState(r, &p, nonce)
-	assert.Equal(nonce+":google:"+want, state)
+	assert.Equal(nonce+":google:"+base64.RawURLEncoding.EncodeToString([]byte(want)), state)
 
-	// ValidateCSRFCookie splits the provider off at the first colon and returns
-	// the whole remainder, so the colons inside the query must come back intact.
+	// ValidateCSRFCookie splits the provider off at the first colon and decodes the whole
+	// remainder, so the colons and ampersands inside the query must come back intact.
 	config, _ = NewConfig([]string{})
 	c := &http.Cookie{Value: nonce}
 	valid, providerName, redirect, err := ValidateCSRFCookie(c, state)
@@ -474,7 +528,13 @@ func TestMakeStateWithoutQueryString(t *testing.T) {
 	r.Header.Add("X-Forwarded-Proto", "http")
 
 	p := provider.Google{}
-	assert.Equal("nonce:google:http://example.com/hello", MakeState(r, &p, "nonce"))
+	c := &http.Cookie{Value: "12345678901234567890123456789012"}
+	state := MakeState(r, &p, "12345678901234567890123456789012")
+
+	config, _ = NewConfig([]string{})
+	_, _, redirect, err := ValidateCSRFCookie(c, state)
+	assert.Nil(err)
+	assert.Equal("http://example.com/hello", redirect)
 }
 
 func TestAuthNonce(t *testing.T) {
